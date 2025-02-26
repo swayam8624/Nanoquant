@@ -111,11 +111,11 @@ def main():
     # 1. Device Setup & Model Loading
     device = get_device()
     logger.info(f"Using device: {device}")
-    model, tokenizer = load_model(model_name="deepseek-ai/deepseek-7b", use_half_precision=True)
+    model, tokenizer = load_model(model_name="Qwen/Qwen2.5-Math-7B", use_half_precision=True)
     logger.info("Loaded base model and tokenizer.")
     
     # 2. Data Loading
-    train_loader, val_loader, test_loader = load_sst2(tokenizer_name="deepseek-ai/deepseek-7b", max_length=128, batch_size=16)
+    train_loader, val_loader, test_loader = load_sst2(tokenizer_name="Qwen/Qwen2.5-Math-7B", max_length=128, batch_size=16)
     logger.info("Data loaded successfully.")
     
     # 3. QAT Pipeline
