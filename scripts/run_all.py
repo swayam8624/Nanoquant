@@ -20,16 +20,17 @@ def main():
     print(f"Using device: {device}")
     
     # Load the base DeepSeek R1 model and its tokenizer (using half precision for QAT)
-    model, tokenizer = load_model(model_name="Qwen/Qwen2.5-Math-7B", use_half_precision=True)
+    model, tokenizer = load_model(model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", use_half_precision=False)
     print("Loaded base model.")
     
     # Load dataset (SST-2) for training/fine-tuning
-    train_loader, val_loader, test_loader = load_sst2(tokenizer_name="Qwen/Qwen2.5-Math-7B", max_length=128, batch_size=16)
+    train_loader, val_loader, test_loader = load_sst2(tokenizer_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B", max_length=128, batch_size=16)
     print("Data loaded successfully.")
     
     # 2. QAT Pipeline
     print("\n--- Starting QAT Pipeline ---")
     # Prepare the model for QAT
+    model.train()
     qat_model = prepare_qat_model(model, backend="fbgemm")
     print("Model prepared for QAT.")
     
