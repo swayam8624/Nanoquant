@@ -31,11 +31,11 @@ def main():
     print("\n--- Starting QAT Pipeline ---")
     # Prepare the model for QAT
     model.train()
-    qat_model = prepare_qat_model(model, backend="fbgemm")
+    qat_model = prepare_qat_model(model)
     print("Model prepared for QAT.")
     
     # Fine-tune the QAT-prepared model
-    qat_loss_history = train_qat_model(qat_model, train_loader, device, epochs=3, lr=1e-5, scheduler_step_size=1, scheduler_gamma=0.1)
+    qat_loss_history = train_qat_model(qat_model, train_loader, device, epochs=3, lr=1e-5)
     plot_loss_curve(qat_loss_history, title="QAT Training Loss")
     
     # Convert the QAT model to a fully quantized model

@@ -2,129 +2,153 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.ao.quantization as quant
-import matplotlib.pyplot as plt
 from torch.ao.quantization import QConfig, default_embedding_qat_qconfig
-from torch.ao.quantization.observer import PerChannelMinMaxObserver, MovingAverageMinMaxObserver
-from torch.ao.quantization.fake_quantize import default_weight_fake_quant
-from src.utils import plot_loss_curve
+from torch.ao.quantization.observer import MovingAverageMinMaxObserver, PerChannelMinMaxObserver
+import matplotlib.pyplot as plt
+import gc
 
-
-def prepare_qat_model(model, backend: str = "fbgemm"):
-    """
-    Prepares a model for Quantization-Aware Training (QAT) with correct dtypes.
-    """
-    # Convert model to float32 (but keep quantization in int8)
-    model = model.float()
+def prepare_qat_model(model):
+    """MPS-compatible QAT preparation with memory optimizations"""
+    model = model.float().eval()
+    model.config.use_cache = False
     
-    # Use appropriate quantization dtypes for observers
+    model.train()
+    
+    # Configure quantization for MPS compatibility
     qconfig = QConfig(
         activation=MovingAverageMinMaxObserver.with_args(
-            dtype=torch.quint8,  # Activation quantization type
-            reduce_range=False
+            dtype=torch.quint8,
+            quant_min=0,
+            quant_max=255
         ),
         weight=PerChannelMinMaxObserver.with_args(
-            dtype=torch.qint8,   # Weight quantization type
+            dtype=torch.qint8,
+            quant_min=-128,
+            quant_max=127,
             qscheme=torch.per_channel_symmetric
         )
     )
     
-    # Assign QConfig to model
-    model.qconfig = qconfig
-    
-    # In prepare_qat_model, after setting model.qconfig
+    # Apply quantization config to appropriate modules
     for name, module in model.named_modules():
-        if isinstance(module, nn.Embedding):
-            module.qconfig = quant.qconfig.default_embedding_qat_qconfig
-        elif isinstance(module, nn.LayerNorm):
-            module.qconfig = None  # Typically don't quantize LayerNorm
+        if isinstance(module, nn.Linear):
+            module.qconfig = qconfig
+        elif isinstance(module, nn.Embedding):
+            module.qconfig = default_embedding_qat_qconfig
     
-    # Prepare for QAT
-    model.train()
-    model_prepared = quant.prepare_qat(model, inplace=False)
-    return model_prepared
+    # Enable gradient checkpointing
+    model.gradient_checkpointing_enable()
+    
+    return quant.prepare_qat(model, inplace=False)
 
-
-def train_qat_model(model, train_loader, device: str, epochs: int = 1, lr: float = 1e-5):
-    """
-    Trains the QAT-prepared model with correct logits handling.
-    """
+def train_qat_model(model, train_loader, device, epochs=3, lr=1e-5):
+    """MPS-optimized training loop with memory safeguards"""
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    
+    # Optimizer configuration for MPS
+    is_mps = str(device) == 'mps'
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=lr,
+        fused=False,
+        foreach=is_mps  # Use foreach implementation for MPS
+    )
+    
     loss_fn = nn.CrossEntropyLoss()
     loss_history = []
-
+    accumulation_steps = 4  # Gradient accumulation
+    
     for epoch in range(epochs):
         model.train()
+        optimizer.zero_grad()
+        
         total_loss = 0.0
-        for batch in train_loader:
+        for batch_idx, batch in enumerate(train_loader):
+            # Memory management
+            if batch_idx % 5 == 0:
+                gc.collect()
+                if is_mps:
+                    torch.mps.empty_cache()
+            
+            # MPS-compatible data loading
             inputs = {
-                k: v.to(device) 
-                for k, v in batch.items() 
-                if k != "label"
+                k: v.to(device, non_blocking=is_mps)
+                for k, v in batch.items() if k != "label"
             }
-            labels = batch["label"].to(device)
+            labels = batch["label"].to(device, non_blocking=is_mps)
             
-            optimizer.zero_grad()
-            outputs = model(**inputs)
+            # Forward pass with reduced precision
+            with torch.autocast(device_type='mps' if is_mps else 'cpu', enabled=is_mps):
+                outputs = model(**inputs)
+                logits = outputs.logits[:, 0, :]  # CLS token
+                loss = loss_fn(logits, labels) / accumulation_steps
             
-            # Extract logits and handle sequence classification
-            logits = outputs.logits if isinstance(outputs, dict) else outputs
-            if logits.dim() == 3:
-                logits = logits[:, 0, :]  # Use [CLS] token for classification
-            
-            loss = loss_fn(logits, labels)
+            # Gradient accumulation
             loss.backward()
-            optimizer.step()
             
-            total_loss += loss.item()
+            if (batch_idx + 1) % accumulation_steps == 0:
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                
+                # Optimizer step
+                optimizer.step()
+                optimizer.zero_grad()
+                
+                # Memory offloading
+                if is_mps:
+                    for param in model.parameters():
+                        param.data = param.data.cpu()
+                        param.grad = None
+                    model = model.to(device)
+                
+                total_loss += loss.item() * accumulation_steps
+                print(f"Batch {batch_idx+1} Loss: {loss.item() * accumulation_steps:.4f}")
         
         avg_loss = total_loss / len(train_loader)
         loss_history.append(avg_loss)
-        print(f"Epoch {epoch+1}/{epochs} Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1} Avg Loss: {avg_loss:.4f}")
     
     return loss_history
 
-
 def convert_qat_model(model):
-    """Converts to quantized model."""
+    """Safe conversion for MPS devices"""
     model.eval()
-    quantized_model = quant.convert(model, inplace=False)
-    return quantized_model
+    if str(next(model.parameters()).device) == 'mps':
+        model = model.cpu()
+    return quant.convert(model, inplace=False)
 
-
-# --- Main Block (Fixed) ---
+# Usage Example
 if __name__ == "__main__":
     from src.model_loader import load_model
     from src.data_loader import load_sst2
-
-    # Force CPU for FBGEMM backend
-    device = "cpu"  # Override to CPU (FBGEMM requires CPU)
-
-    # Load model in FP32
+    
+    # Configure MPS memory
+    if torch.backends.mps.is_available():
+        torch.mps.set_per_process_memory_fraction(0.7)
+    
+    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    
+    # Load model with 8-bit quantization
     model, tokenizer = load_model(
-        model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        use_half_precision=False  # Ensure FP32
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
     )
-
-    # Load dataset
-    train_loader, _, _ = load_sst2(
-        tokenizer_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        max_length=128,
-        batch_size=16
+    
+    # Load dataset with small batches
+    train_loader = load_sst2(
+        tokenizer_name=tokenizer,
+        max_length=32,
+        batch_size=2
     )
-
-    # Prepare QAT
-    qat_model = prepare_qat_model(model)
-
-    # Train
-    loss_history = train_qat_model(
-        qat_model, 
-        train_loader, 
-        device, 
-        epochs=3, 
-        lr=1e-5
-    )
-    plot_loss_curve(loss_history)
-
-    # Convert to quantized model
-    quantized_model = convert_qat_model(qat_model)
+    
+    # QAT workflow
+    try:
+        qat_model = prepare_qat_model(model)
+        loss_history = train_qat_model(qat_model, train_loader, device)
+        quantized_model = convert_qat_model(qat_model)
+        print("Quantization successful!")
+    except RuntimeError as e:
+        print(f"Error: {str(e)}")
+        print("Recommended actions:")
+        print("1. Reduce max_length to 16")
+        print("2. Set batch_size=1")
+        print("3. Use 4-bit quantization instead")
