@@ -3,6 +3,7 @@
 NanoQuant is a research project that focuses on optimizing large language models (LLMs) for deployment in resource-constrained nanotechnology applications. By integrating advanced techniques such as Quantization-Aware Training (QAT), custom quantization, Low-Rank Adaptation (LoRA), and sparse pruning—with an innovative quantum simulation module—NanoQuant achieves significant reductions in memory footprint and computational requirements while retaining high performance.
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Project Motivation](#project-motivation)
 - [Key Features](#key-features)
@@ -23,6 +24,7 @@ NanoQuant is a research project that focuses on optimizing large language models
 ## Overview
 
 NanoQuant is designed to bridge the gap between high-performance LLMs and the stringent resource constraints found in nanotech applications. Our project achieves this by:
+
 - **Reducing Model Size:** Through QAT and pruning, we lower the memory requirements dramatically.
 - **Improving Inference Speed:** Lower precision and sparsity allow for faster computations.
 - **Maintaining High Accuracy:** Techniques like LoRA ensure that the performance drop is minimal.
@@ -31,6 +33,7 @@ NanoQuant is designed to bridge the gap between high-performance LLMs and the st
 ## Project Motivation
 
 Modern LLMs, while powerful, are resource-intensive and often impractical for edge devices or nanotech systems where power, memory, and speed are critical. NanoQuant addresses this by:
+
 - **Optimizing Classical Models:** Applying state-of-the-art techniques to reduce resource demands.
 - **Hybrid Quantum-Classical Approach:** Incorporating a quantum simulation step to extract supplementary features that can boost performance in specific scenarios.
 - **Immediate Applicability:** Leveraging existing classical hardware while paving the way for future integration with quantum hardware.
@@ -39,22 +42,19 @@ Modern LLMs, while powerful, are resource-intensive and often impractical for ed
 
 - **Quantization-Aware Training (QAT):**  
   Simulates lower-precision arithmetic during training, enabling the model to adapt to reduced precision and reducing the memory footprint by up to 4× when converting from float32 to int8.
-  
 - **Custom Quantization:**  
   Fine-tunes quantization parameters (like learnable scale factors) using KL divergence, providing more precise control over the quantization process.
-  
 - **LoRA Adaptation:**  
   Applies low-rank adaptation to a small subset of parameters for efficient fine-tuning, adding only 1–2% additional parameters while greatly reducing storage and compute costs.
-  
 - **Sparse Pruning:**  
   Removes less important weights (e.g., 30% pruning via L1 unstructured methods), further reducing the model size without significantly impacting accuracy.
-  
 - **Quantum Simulation Integration:**  
   Utilizes Qiskit to simulate a quantum circuit that extracts quantum features. These features are fused with classical model outputs to produce an integrated prediction—demonstrating a novel hybrid approach.
 
 ## Architecture & Pipeline
 
 The NanoQuant pipeline is modular and consists of the following steps:
+
 1. **Data Loading:**  
    Uses the SST-2 dataset (from GLUE) for training, validation, and testing. Data is tokenized and batched for use in training.
 2. **Model Loading:**  
@@ -74,30 +74,43 @@ The NanoQuant pipeline is modular and consists of the following steps:
 
 ```
 NanoQuant/
-├── README.md               # Project overview and documentation
-├── requirements.txt        # List of dependencies (torch, transformers, peft, datasets, matplotlib, scikit-learn, qiskit, numpy, etc.)
-├── LICENSE                 # Project license file
-├── scripts/                # Execution scripts for different pipelines
-│   ├── run_qat.py          # Runs the Quantization-Aware Training pipeline
-│   ├── run_lora.py         # Runs the LoRA adaptation pipeline
-│   ├── run_pruning.py      # Runs the sparse pruning pipeline
-│   ├── run_all.py          # Sequentially executes QAT, LoRA, and pruning on the same model
-│   └── run_quantum_ai.py   # Integrates classical optimization with quantum simulation
-├── src/                    # Source code modules
-│   ├── __init__.py         # Module initializer
-│   ├── data_loader.py      # Functions for data loading and tokenization
-│   ├── model_loader.py     # Functions to load the base model and tokenizer
-│   ├── qat.py              # QAT functions and training loop for quantization
-│   ├── custom_quant.py     # Custom quantization routines (optional)
-│   ├── lora.py             # LoRA adaptation functions and training loop
-│   ├── pruning.py          # Sparse pruning functions
-│   ├── training.py         # Generic training loop and evaluation functions
-│   ├── evaluation.py       # Model evaluation functions and metrics
-│   └── utils.py            # Utility functions (logging, plotting, device selection, etc.)
-├── notebooks/              # Jupyter notebooks for experiments and visualization
-├── tests/                  # Unit tests for modules
-├── models/                 # Directory for saving trained models and checkpoints
-└── logs/                   # Log files from training and experiments
+├── README.md                   # Detailed project overview, methodology, and usage instructions
+├── LICENSE                     # License file (e.g., MIT or Apache-2.0)
+├── requirements.txt            # List of Python dependencies (e.g., torch, transformers, peft, datasets, matplotlib, qiskit, etc.)
+├── setup.py                    # (Optional) Setup script for packaging the project
+│
+├── scripts/
+│   ├── run_lora.py             # Script to load a small LLM, apply LoRA adaptation, and fine-tune it
+│   ├── run_pruning.py          # Script to apply sparse pruning to the LoRA-adapted model
+│   ├── run_all.py              # Script to sequentially run LoRA, pruning, and evaluation on the same model
+│   ├── run_quantum_ai.py       # Script to integrate classical optimization with quantum simulation features
+│   ├── publish_model.sh        # Bash script to publish the final model to Hugging Face
+│   └── publish_model.py        # Python script to automate uploading the model using the Hugging Face Hub API
+│
+├── src/
+│   ├── __init__.py             # Package initializer: imports all submodules for ease-of-use
+│   ├── data_loader.py          # Functions to load and preprocess datasets (e.g., tommybrenson/genius-lyrics)
+│   ├── model_loader.py         # Functions to load the base model (e.g., mradermacher/lyrics_generator_llama3.2_1B-i1-GGUF or a smaller one) and tokenizer
+│   ├── qat.py                  # Standard QAT functions: preparing a model for quantization (with fallback to float32) and training it
+│   ├── custom_quant.py         # (Optional) Custom quantization routines to calibrate quantization scale factors using KL divergence
+│   ├── lora.py                 # Functions for applying and fine-tuning LoRA adapters
+│   ├── pruning.py              # Functions for applying sparse pruning to reduce model size
+│   ├── training.py             # Generic training loop functions, including support for gradient checkpointing (if needed)
+│   ├── evaluation.py           # Functions for evaluating the model (accuracy, inference latency, confusion matrices, etc.)
+│   └── utils.py                # Utility functions (logging, plotting, device selection, directory management)
+│
+├── notebooks/
+│   └── visualize_results.ipynb   # Jupyter Notebook to load the final model from Hugging Face and compare its performance against a baseline
+│
+├── tests/
+│   └── test_*.py               # Unit tests for individual modules (data_loader, model_loader, lora, pruning, etc.)
+│
+├── models/
+│   └── final_model/            # Directory where final, optimized model files (after LoRA/pruning, with optional quantization) are saved
+│
+└── logs/
+    └── run.log                # Log files capturing training and evaluation details
+
 ```
 
 ## Installation
@@ -123,7 +136,8 @@ source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-*Ensure that your `requirements.txt` includes all necessary packages:*
+_Ensure that your `requirements.txt` includes all necessary packages:_
+
 ```
 torch
 transformers
@@ -144,42 +158,51 @@ Adjust your CUDA/MPS settings if required.
 ### Running QAT
 
 To run the Quantization-Aware Training pipeline:
+
 ```bash
 python scripts/run_qat.py
 ```
+
 - **What it does:**  
   Loads the base model, prepares it for QAT, fine-tunes it, converts it to a quantized model, and saves the output to `models/quantized_model`.
 
 ### Running LoRA
 
 To run the LoRA adaptation pipeline:
+
 ```
 python scripts/run_lora.py
 ```
+
 - **What it does:**  
   Loads the base model in full precision, applies LoRA adaptation, fine-tunes the LoRA model, and saves the output to `models/lora_model`.
 
 ### Running Pruning
 
 To apply sparse pruning:
+
 ```
 python scripts/run_pruning.py
 ```
+
 - **What it does:**  
   Loads the base model, applies sparse pruning on targeted modules, and saves the pruned model to `models/pruned_model`.
 
 ### Running the Integrated Quantum AI Pipeline
 
 To run the full integration pipeline:
+
 ```
 python scripts/run_quantum_ai.py
 ```
+
 - **What it does:**  
   Runs QAT, LoRA, and pruning sequentially on the same model instance. Then it performs inference on a test sample, runs a quantum simulation using Qiskit to extract quantum features, and integrates the classical prediction with the quantum feature. The final integrated model is saved to `models/final_quantum_ai_model`.
 
 ## Experimental Results
 
-*Example (Hypothetical):*
+_Example (Hypothetical):_
+
 - **Model Size Reduction:**  
   Full-precision model: 4GB → Quantized model (int8): ~1GB (≈75% reduction). Additional pruning reduced effective storage by 10–20%.
 - **Inference Latency:**  
@@ -189,7 +212,7 @@ python scripts/run_quantum_ai.py
 - **Quantum Feature Integration:**  
   Hybrid quantum-classical approach improved specific downstream metrics by up to 5%.
 
-*Note:* Actual results will depend on your experiments and hardware.
+_Note:_ Actual results will depend on your experiments and hardware.
 
 ## Future Work
 
@@ -203,6 +226,7 @@ python scripts/run_quantum_ai.py
 ## Contributing
 
 Contributions are welcome! Follow these steps:
+
 1. Fork the repository.
 2. Create a new branch for your feature or bug fix.
 3. Write tests and update documentation.
@@ -224,4 +248,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ---
 
 NanoQuant is a cutting-edge, integrative project that not only advances the efficiency of large language models but also pioneers the fusion of quantum simulation with classical optimization techniques. This README provides the detailed guidance necessary for researchers and practitioners to replicate, understand, and extend our work.
+
+```
+
 ```

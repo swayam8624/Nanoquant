@@ -3,7 +3,7 @@ import os
 import torch
 from src.model_loader import load_model
 from src.data_loader import load_sst2
-from src.qat import prepare_qat_model, train_qat_model, convert_qat_model
+from src.custom_quant import prepare_qat_model, train_qat_model, convert_qat_model
 from src.utils import get_device, ensure_dir
 
 def main():
