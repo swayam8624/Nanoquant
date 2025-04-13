@@ -1,0 +1,28 @@
+{"time":"2025-04-13T12:44:29.957547+05:30","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2025-04-13T12:44:29.957601+05:30","level":"INFO","msg":"created symlink","path":"/Users/swayamsingal/Desktop/Programming/NanoQuant/notebooks/wandb/run-20250413_124429-6wohytdw/logs/debug-core.log"}
+{"time":"2025-04-13T12:44:30.22994+05:30","level":"INFO","msg":"created new stream","id":"6wohytdw"}
+{"time":"2025-04-13T12:44:30.230163+05:30","level":"INFO","msg":"handler: started","stream_id":"6wohytdw"}
+{"time":"2025-04-13T12:44:30.23019+05:30","level":"INFO","msg":"writer: Do: started","stream_id":"6wohytdw"}
+{"time":"2025-04-13T12:44:30.23021+05:30","level":"INFO","msg":"sender: started","stream_id":"6wohytdw"}
+{"time":"2025-04-13T12:44:30.230183+05:30","level":"INFO","msg":"stream: started","id":"6wohytdw"}
+{"time":"2025-04-13T12:44:30.7066+05:30","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-04-13T12:44:31.478324+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T15:13:48.873725+05:30","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"}
+{"time":"2025-04-13T17:04:35.529691+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:04:35.533338+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:04:54.286262+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:04:54.288704+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:04:57.275704+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:04:57.304141+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:04:58.968927+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:05:15.895012+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:06:36.677048+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:06:37.140662+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:09:20.77343+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:09:20.776336+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:09:40.826067+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:09:40.865039+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:09:44.731374+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:09:44.736815+05:30","level":"INFO","msg":"Pausing system monitor"}
+{"time":"2025-04-13T17:10:01.757486+05:30","level":"INFO","msg":"Resuming system monitor"}
+{"time":"2025-04-13T17:10:01.762068+05:30","level":"INFO","msg":"Pausing system monitor"}

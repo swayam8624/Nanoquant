@@ -1,0 +1,42 @@
+{
+  "os":  "macOS-10.16-x86_64-i386-64bit",
+  "python":  "CPython 3.10.16",
+  "startedAt":  "2025-04-13T11:41:50.039908Z",
+  "program":  "notebooks/Untitled.ipynb",
+  "git":  {
+    "remote":  "https://github.com/swayam8624/Nanoquant.git",
+    "commit":  "b7b84483c3fbaefd851624984506207243fb18c0"
+  },
+  "email":  "swayam.singal@gmail.com",
+  "root":  "/Users/swayamsingal/Desktop/Programming/NanoQuant/notebooks",
+  "host":  "Swayams-MacBook-Pro-2.local",
+  "executable":  "/Users/swayamsingal/miniconda3/envs/research_env/bin/python",
+  "cpu_count":  12,
+  "cpu_count_logical":  12,
+  "disk":  {
+    "/":  {
+      "total":  "994662584320",
+      "used":  "511686328320"
+    },
+    "/System/Volumes/Data":  {
+      "total":  "994662584320",
+      "used":  "511686328320"
+    }
+  },
+  "memory":  {
+    "total":  "34359738368"
+  },
+  "cpu":  {
+    "count":  12,
+    "countLogical":  12
+  },
+  "apple":  {
+    "name":  "Unknown",
+    "ecpuCores":  4,
+    "pcpuCores":  8,
+    "gpuCores":  19,
+    "memoryGb":  32,
+    "swapTotalBytes":  "1073741824",
+    "ramTotalBytes":  "34359738368"
+  }
+}

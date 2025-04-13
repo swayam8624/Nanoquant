@@ -1,0 +1,7 @@
+pad_token was not set; set to eos_token.
+No label_names provided for model class `PeftModel`. Since `PeftModel` hides base models input arguments, if label_names is not given, label_names can't be set automatically within `Trainer`. Note that empty label_names list will be used instead.
+Trainer is set up with mixed precision parameters:
+fp16: False, bf16: True
+Starting LoRA finetuning...
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+Filtering out empty text examples from the training dataset...
