@@ -1,0 +1,83 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+*.egg
+*.whl
+
+# --- Virtual Envs ---
+.env
+.venv
+env/
+venv/
+ENV/
+Pipfile.lock
+poetry.lock
+
+# --- Data & Models ---
+/data/
+/checkpoints/
+/nanoquants/
+/logs/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.tflite
+*.h5
+*.hdf5
+
+# --- Logs & Reports ---
+*.log
+logs/
+mlruns/
+tensorboard/
+wandb/
+
+# --- IDE & Editor ---
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+.DS_Store
+
+# --- Environment ---
+*.env
+*.envrc
+.env.local
+
+# --- Archives ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# --- Local development ---
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- Jupyter Notebook ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+
+*.DS_Store
+*.ipynb_checkpoints
+*.pytest_cache/
+__pycache__/
+*.pyc
