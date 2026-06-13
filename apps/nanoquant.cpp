@@ -1,5 +1,6 @@
 #include "nanoquant/quantization.hpp"
 #include "nanoquant/tensor.hpp"
+#include "nanoquant/workflow.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -56,10 +57,21 @@ void print_help() {
         << "Commands:\n"
         << "  nanoquant demo [--rows N] [--cols N] [--seed N] [--group-size N]\n"
         << "  nanoquant levels\n"
-        << "  nanoquant inspect [--rows N] [--cols N]\n\n"
+        << "  nanoquant inspect [--rows N] [--cols N]\n"
+        << "  nanoquant hf-pipeline --model-id ID --ollama-name NAME [options]\n\n"
+        << "HF pipeline options:\n"
+        << "  --output-dir PATH          Artifact directory, default artifacts/nanoquant-model\n"
+        << "  --quant QTYPE              llama.cpp quant type, default Q4_K_M\n"
+        << "  --llama-cpp PATH           llama.cpp checkout, or set LLAMA_CPP_DIR\n"
+        << "  --base-ollama-name NAME    Existing teacher/base model for output comparison\n"
+        << "  --reference-ollama-name N  Create an f16 reference Ollama model from converted GGUF\n"
+        << "  --prompt TEXT              Prompt used for smoke test and comparison\n"
+        << "  --ollama-push              Run `ollama push NAME` after create\n"
+        << "  --execute                  Run external tools; omitted means dry-run plan only\n\n"
         << "Examples:\n"
         << "  nanoquant demo --rows 1024 --cols 1024\n"
-        << "  nanoquant inspect --rows 4096 --cols 4096\n";
+        << "  nanoquant inspect --rows 4096 --cols 4096\n"
+        << "  nanoquant hf-pipeline --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0 --ollama-name tinyllama-nq\n";
 }
 
 void print_report(const nanoquant::CodecReport& report) {
@@ -137,6 +149,37 @@ int run_inspect(int argc, char** argv, int start_index) {
     return EXIT_SUCCESS;
 }
 
+int run_hf_pipeline(int argc, char** argv, int start_index) {
+    nanoquant::WorkflowOptions options;
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--model-id") {
+            options.model_id = next_value(index, argc, argv, arg);
+        } else if (arg == "--output-dir") {
+            options.output_dir = next_value(index, argc, argv, arg);
+        } else if (arg == "--ollama-name") {
+            options.ollama_name = next_value(index, argc, argv, arg);
+        } else if (arg == "--base-ollama-name") {
+            options.base_ollama_name = next_value(index, argc, argv, arg);
+        } else if (arg == "--reference-ollama-name") {
+            options.reference_ollama_name = next_value(index, argc, argv, arg);
+        } else if (arg == "--quant") {
+            options.quantization = next_value(index, argc, argv, arg);
+        } else if (arg == "--prompt") {
+            options.prompt = next_value(index, argc, argv, arg);
+        } else if (arg == "--llama-cpp") {
+            options.llama_cpp_dir = next_value(index, argc, argv, arg);
+        } else if (arg == "--ollama-push") {
+            options.ollama_push = true;
+        } else if (arg == "--execute") {
+            options.execute = true;
+        } else {
+            throw std::invalid_argument("unknown hf-pipeline option: " + std::string(arg));
+        }
+    }
+    return nanoquant::run_workflow(options);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -155,6 +198,9 @@ int main(int argc, char** argv) {
         }
         if (command == "inspect") {
             return run_inspect(argc, argv, 2);
+        }
+        if (command == "hf-pipeline") {
+            return run_hf_pipeline(argc, argv, 2);
         }
         if (command == "--help" || command == "-h" || command == "help") {
             print_help();

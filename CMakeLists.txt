@@ -11,7 +11,8 @@ option(NANOQUANT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 add_library(nanoquant_core
     src/bitpack.cpp
     src/quantization.cpp
-    src/tensor.cpp)
+    src/tensor.cpp
+    src/workflow.cpp)
 
 target_include_directories(nanoquant_core
     PUBLIC

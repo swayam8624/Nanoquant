@@ -40,6 +40,35 @@ List public compression modes:
 ./build/nanoquant levels
 ```
 
+Plan a Hugging Face to Ollama compression run:
+
+```bash
+./build/nanoquant hf-pipeline \
+  --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --ollama-name tinyllama-nq \
+  --reference-ollama-name tinyllama-reference \
+  --prompt "Explain quantization in one sentence."
+```
+
+The command above is a dry run. Add `--execute` only after the plan points at working external tools:
+
+- `huggingface-cli` or `git`
+- `python3`
+- a local `llama.cpp` checkout with `convert_hf_to_gguf.py`
+- `llama-quantize`
+- `ollama`
+
+Push to an Ollama registry namespace when the model name and account are configured:
+
+```bash
+./build/nanoquant hf-pipeline \
+  --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --ollama-name yourname/tinyllama-nq \
+  --reference-ollama-name tinyllama-reference \
+  --ollama-push \
+  --execute
+```
+
 ## Example Output
 
 The exact timing varies by machine, but a demo prints:
@@ -89,6 +118,8 @@ apps/                CLI entry point
 tests/               Dependency-free test executable
 docs/                Design notes and roadmap
 ```
+
+See [docs/HF_OLLAMA_WORKFLOW.md](docs/HF_OLLAMA_WORKFLOW.md) for the end-to-end model workflow.
 
 ## Roadmap
 

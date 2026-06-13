@@ -1,6 +1,7 @@
 #include "nanoquant/bitpack.hpp"
 #include "nanoquant/quantization.hpp"
 #include "nanoquant/tensor.hpp"
+#include "nanoquant/workflow.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -49,6 +50,19 @@ void test_sparsity_analysis() {
     assert(std::fabs(report.sparsity - 0.5) < 1.0e-12);
 }
 
+void test_comparison_guardrail() {
+    const auto healthy = nanoquant::compare_outputs(
+        "Quantization reduces model weight precision while preserving useful behavior.",
+        "Model quantization reduces weight precision and can preserve useful behavior.");
+    assert(!healthy.likely_degraded);
+    assert(healthy.lexical_overlap > 0.4);
+
+    const auto degraded = nanoquant::compare_outputs(
+        "Quantization reduces model weight precision while preserving useful behavior.",
+        "banana");
+    assert(degraded.likely_degraded);
+}
+
 }  // namespace
 
 int main() {
@@ -56,5 +70,6 @@ int main() {
     test_onebit_roundtrip_shape();
     test_int4_error_is_bounded_for_small_values();
     test_sparsity_analysis();
+    test_comparison_guardrail();
     std::cout << "nanoquant_tests passed\n";
 }
