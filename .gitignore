@@ -1,85 +1,42 @@
-# --- Python ---
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.eggs/
-*.egg
-*.whl
+# Build output
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+Testing/
 
-# --- Virtual Envs ---
-.env
-.venv
-env/
-venv/
-ENV/
-Pipfile.lock
-poetry.lock
-
-# --- Data & Models ---
-/data/
-/checkpoints/
-/nanoquants/
-/logs/
+# Generated artifacts
+artifacts/
+outputs/
+models/
+checkpoints/
 *.safetensors
+*.gguf
+*.bin
 *.pt
 *.pth
-*.ckpt
-*.bin
 *.onnx
-*.tflite
-*.h5
-*.hdf5
 
-# --- Logs & Reports ---
-*.log
-logs/
-mlruns/
-tensorboard/
-wandb/
-
-# --- IDE & Editor ---
-.vscode/
-.idea/
-*.iml
-*.swp
-*.swo
-.DS_Store
-
-# --- Environment ---
-*.env
-*.envrc
-.env.local
-
-# --- Archives ---
-*.zip
-*.tar
-*.tar.gz
-*.tgz
-*.7z
-*.rar
-
-# --- Local development ---
+# Local tooling
+.cache/
 .pytest_cache/
 .mypy_cache/
-.coverage
-htmlcov/
-.tox/
-
-# --- Jupyter Notebook ---
-.ipynb_checkpoints/
-*/.ipynb_checkpoints/*
-
-# --- System Files ---
-.DS_Store
-Thumbs.db
-
-*.DS_Store
-*.ipynb_checkpoints
-*.pytest_cache/
+.venv/
+venv/
 __pycache__/
 *.pyc
 
-./nanoquant_output
+# OS/editor files
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs and local config
+*.log
+.env
+.env.*
+!.env.example
