@@ -1,0 +1,5 @@
+Explain model quantization in one concise sentence.
+Give one risk of over-compressing a language model.
+Why can GGUF be useful for local inference?
+Write a tiny C++ function that returns the square of an integer.
+List two reasons Apple Silicon unified memory changes local model deployment.

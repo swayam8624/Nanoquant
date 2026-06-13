@@ -94,6 +94,47 @@ std::set<std::string> token_set(const std::string& text) {
     return tokens;
 }
 
+std::string sanitize_terminal_output(const std::string& text) {
+    std::string clean;
+    clean.reserve(text.size());
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const unsigned char ch = static_cast<unsigned char>(text[index]);
+        if (ch == 0x1BU) {
+            ++index;
+            if (index < text.size() && text[index] == '[') {
+                while (index < text.size()) {
+                    const unsigned char code = static_cast<unsigned char>(text[index]);
+                    if (code >= 0x40U && code <= 0x7EU) {
+                        break;
+                    }
+                    ++index;
+                }
+            }
+            continue;
+        }
+        if (ch == '\r') {
+            continue;
+        }
+        if (ch < 0x20U && ch != '\n' && ch != '\t') {
+            continue;
+        }
+        clean.push_back(static_cast<char>(ch));
+    }
+    const std::array<std::string, 6> private_markers = {"?25l", "?25h", "?2026h", "?2026l", "1G", "2K"};
+    for (const auto& marker : private_markers) {
+        std::size_t position = 0;
+        while ((position = clean.find(marker, position)) != std::string::npos) {
+            clean.erase(position, marker.size());
+        }
+    }
+    for (std::size_t index = 0; index < clean.size(); ++index) {
+        if (clean[index] == 'K' && (index == 0U || clean[index - 1U] == '\n')) {
+            clean.erase(index, 1);
+        }
+    }
+    return clean;
+}
+
 void write_file(const std::filesystem::path& path, const std::string& content) {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path);
@@ -116,7 +157,7 @@ std::string modelfile_content(const WorkflowOptions& options, const std::filesys
 
 std::string report_markdown(const WorkflowOptions& options,
                             const WorkflowPlan& plan,
-                            const std::optional<ComparisonReport>& comparison) {
+                            const std::optional<PromptSetEvaluation>& evaluation) {
     std::ostringstream out;
     out << "# NanoQuant Run Report\n\n";
     out << "- model: `" << options.model_id << "`\n";
@@ -130,18 +171,27 @@ std::string report_markdown(const WorkflowOptions& options,
     out << "- pull command: `ollama pull " << options.ollama_name << "`\n";
     out << "- artifact: `" << plan.quantized_gguf.string() << "`\n\n";
 
-    if (comparison.has_value()) {
-        out << "## Comparison\n\n";
-        out << "- lexical overlap: `" << comparison->lexical_overlap << "`\n";
-        out << "- length ratio: `" << comparison->length_ratio << "`\n";
-        out << "- likely degraded: `" << (comparison->likely_degraded ? "yes" : "no") << "`\n\n";
-        out << "### Base Output\n\n```text\n" << comparison->base_output << "\n```\n\n";
-        out << "### Compressed Output\n\n```text\n" << comparison->compressed_output << "\n```\n\n";
-        if (comparison->likely_degraded) {
-            out << build_tuning_recommendation(options, *comparison);
+    if (evaluation.has_value()) {
+        out << "## Prompt-Set Comparison\n\n";
+        out << "- prompts: `" << evaluation->rows.size() << "`\n";
+        out << "- mean lexical overlap: `" << evaluation->mean_lexical_overlap << "`\n";
+        out << "- mean length ratio: `" << evaluation->mean_length_ratio << "`\n";
+        out << "- degraded prompts: `" << evaluation->degraded_count << "`\n\n";
+        for (std::size_t index = 0; index < evaluation->rows.size(); ++index) {
+            const auto& row = evaluation->rows[index];
+            out << "### Prompt " << index + 1U << "\n\n";
+            out << "```text\n" << row.prompt << "\n```\n\n";
+            out << "- lexical overlap: `" << row.comparison.lexical_overlap << "`\n";
+            out << "- length ratio: `" << row.comparison.length_ratio << "`\n";
+            out << "- likely degraded: `" << (row.comparison.likely_degraded ? "yes" : "no") << "`\n\n";
+            out << "Base output:\n\n```text\n" << row.comparison.base_output << "\n```\n\n";
+            out << "Compressed output:\n\n```text\n" << row.comparison.compressed_output << "\n```\n\n";
+        }
+        if (evaluation->degraded_count > 0U && !evaluation->rows.empty()) {
+            out << build_tuning_recommendation(options, evaluation->rows.front().comparison);
         }
     } else {
-        out << "Comparison skipped. Pass `--base-ollama-name <name>` to compare against an existing Ollama model.\n";
+        out << "Comparison skipped. Pass `--base-ollama-name <name>` or `--reference-ollama-name <name>` to compare against a model.\n";
     }
 
     return out.str();
@@ -174,6 +224,7 @@ CommandResult run_command_capture(const std::string& command) {
     } else {
         result.exit_code = status;
     }
+    result.output = sanitize_terminal_output(result.output);
     return result;
 }
 
@@ -291,6 +342,64 @@ ComparisonReport compare_outputs(const std::string& base_output, const std::stri
     return report;
 }
 
+std::vector<std::string> load_prompt_file(const std::filesystem::path& path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("failed to open prompt file: " + path.string());
+    }
+    std::vector<std::string> prompts;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (!line.empty() && line.front() != '#') {
+            prompts.push_back(line);
+        }
+    }
+    if (prompts.empty()) {
+        throw std::runtime_error("prompt file has no prompts: " + path.string());
+    }
+    return prompts;
+}
+
+PromptSetEvaluation evaluate_ollama_prompt_set(const std::string& reference_model,
+                                               const std::string& compressed_model,
+                                               const std::vector<std::string>& prompts) {
+    if (reference_model.empty() || compressed_model.empty()) {
+        throw std::invalid_argument("reference and compressed model names are required");
+    }
+    if (prompts.empty()) {
+        throw std::invalid_argument("at least one prompt is required");
+    }
+
+    PromptSetEvaluation evaluation;
+    evaluation.rows.reserve(prompts.size());
+    for (const std::string& prompt : prompts) {
+        const CommandResult base =
+            run_command_capture("ollama run " + shell_quote(reference_model) + " " + shell_quote(prompt));
+        const CommandResult compressed =
+            run_command_capture("ollama run " + shell_quote(compressed_model) + " " + shell_quote(prompt));
+        if (base.exit_code != 0) {
+            throw std::runtime_error("reference model command failed: " + base.output);
+        }
+        if (compressed.exit_code != 0) {
+            throw std::runtime_error("compressed model command failed: " + compressed.output);
+        }
+
+        PromptComparison row;
+        row.prompt = prompt;
+        row.comparison = compare_outputs(base.output, compressed.output);
+        evaluation.mean_lexical_overlap += row.comparison.lexical_overlap;
+        evaluation.mean_length_ratio += row.comparison.length_ratio;
+        if (row.comparison.likely_degraded) {
+            ++evaluation.degraded_count;
+        }
+        evaluation.rows.push_back(std::move(row));
+    }
+
+    evaluation.mean_lexical_overlap /= static_cast<double>(evaluation.rows.size());
+    evaluation.mean_length_ratio /= static_cast<double>(evaluation.rows.size());
+    return evaluation;
+}
+
 std::string build_tuning_recommendation(const WorkflowOptions& options, const ComparisonReport& report) {
     std::ostringstream out;
     out << "## Distillation / Fine-Tuning Recommendation\n\n";
@@ -345,21 +454,20 @@ int run_workflow(const WorkflowOptions& options) {
         }
     }
 
-    std::optional<ComparisonReport> comparison;
+    std::optional<PromptSetEvaluation> evaluation;
     const std::string comparison_model =
         !options.base_ollama_name.empty() ? options.base_ollama_name : options.reference_ollama_name;
     if (!comparison_model.empty()) {
-        const std::string base_command = "ollama run " + shell_quote(comparison_model) + " " + shell_quote(options.prompt);
-        const std::string compressed_command = "ollama run " + shell_quote(options.ollama_name) + " " + shell_quote(options.prompt);
-        const CommandResult base = run_command_capture(base_command);
-        const CommandResult compressed = run_command_capture(compressed_command);
-        comparison = compare_outputs(base.output, compressed.output);
-        std::cout << "\ncomparison lexical_overlap=" << comparison->lexical_overlap
-                  << " length_ratio=" << comparison->length_ratio
-                  << " degraded=" << (comparison->likely_degraded ? "yes" : "no") << '\n';
+        const std::vector<std::string> prompts =
+            options.prompt_file.empty() ? std::vector<std::string>{options.prompt} : load_prompt_file(options.prompt_file);
+        evaluation = evaluate_ollama_prompt_set(comparison_model, options.ollama_name, prompts);
+        std::cout << "\nprompt_set prompts=" << evaluation->rows.size()
+                  << " mean_lexical_overlap=" << evaluation->mean_lexical_overlap
+                  << " mean_length_ratio=" << evaluation->mean_length_ratio
+                  << " degraded=" << evaluation->degraded_count << '\n';
     }
 
-    write_file(plan.report_file, report_markdown(options, plan, comparison));
+    write_file(plan.report_file, report_markdown(options, plan, evaluation));
     std::cout << "wrote report: " << plan.report_file << '\n';
     return 0;
 }

@@ -90,7 +90,26 @@ For public demos, start with small open models before trying 7B class models.
 
 ## Degradation and Fine-Tuning
 
-When `--reference-ollama-name` or `--base-ollama-name` is provided, NanoQuant runs the same prompt against the reference and compressed Ollama models and computes a cheap lexical guardrail:
+When `--reference-ollama-name` or `--base-ollama-name` is provided, NanoQuant runs prompts against the reference and compressed Ollama models and computes a cheap lexical guardrail. Pass `--prompt-file examples/prompts.txt` to evaluate a set instead of one prompt:
+
+```bash
+./build/nanoquant prove-small-model \
+  --ollama-name smollm2-nq \
+  --prompt-file examples/prompts.txt \
+  --execute
+```
+
+You can also evaluate already-created Ollama models directly:
+
+```bash
+./build/nanoquant evaluate-prompts \
+  --reference smollm2-reference \
+  --compressed smollm2-nq \
+  --prompt-file examples/prompts.txt \
+  --output artifacts/prompt-eval.md
+```
+
+The evaluator tracks:
 
 - low token overlap
 - extremely short compressed output

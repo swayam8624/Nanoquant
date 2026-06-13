@@ -102,6 +102,29 @@ void test_binary_tensor_file_roundtrip() {
     std::filesystem::remove(path);
 }
 
+void test_int4_tensor_file_roundtrip() {
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "nanoquant-test.int4";
+    const auto tensor = nanoquant::make_deterministic_weights(4, 8, 13);
+    const auto quantized = nanoquant::quantize_int4_symmetric(tensor, 8);
+    nanoquant::save_int4_tensor(path, quantized);
+
+    const auto info = nanoquant::inspect_int4_tensor(path);
+    assert(info.version == 1U);
+    assert(info.rows == 4U);
+    assert(info.cols == 8U);
+    assert(info.group_size == 8U);
+    assert(info.scale_count == quantized.scales.size());
+    assert(info.packed_bytes == quantized.packed_values.size());
+
+    const auto loaded = nanoquant::load_int4_tensor(path);
+    assert(loaded.rows == quantized.rows);
+    assert(loaded.cols == quantized.cols);
+    assert(loaded.group_size == quantized.group_size);
+    assert(loaded.scales == quantized.scales);
+    assert(loaded.packed_values == quantized.packed_values);
+    std::filesystem::remove(path);
+}
+
 void test_minimal_gguf_inspection() {
     const std::filesystem::path path = std::filesystem::temp_directory_path() / "nanoquant-test.gguf";
     std::ofstream out(path, std::ios::binary);
@@ -143,6 +166,26 @@ void test_cpu_matvec() {
     assert(std::fabs(output[1] - 15.5F) < 1.0e-6F);
 }
 
+void test_metal_matches_cpu_when_available() {
+    if (!nanoquant::metal_backend_info().available) {
+        return;
+    }
+    const auto tensor = nanoquant::make_deterministic_weights(8, 8, 21);
+    const auto quantized = nanoquant::quantize_int4_symmetric(tensor, 8);
+    const auto cpu = nanoquant::dequantize_int4_cpu(quantized);
+    const auto metal = nanoquant::dequantize_int4_metal(quantized);
+    const auto stats = nanoquant::compare(cpu, metal);
+    assert(stats.max_absolute_error < 1.0e-6F);
+
+    const std::vector<float> vector{0.1F, -0.2F, 0.3F, -0.4F, 0.5F, -0.6F, 0.7F, -0.8F};
+    const auto cpu_out = nanoquant::matvec_cpu(cpu, vector);
+    const auto metal_out = nanoquant::matvec_metal(cpu, vector);
+    assert(cpu_out.size() == metal_out.size());
+    for (std::size_t index = 0; index < cpu_out.size(); ++index) {
+        assert(std::fabs(cpu_out[index] - metal_out[index]) < 1.0e-5F);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -152,7 +195,9 @@ int main() {
     test_sparsity_analysis();
     test_comparison_guardrail();
     test_binary_tensor_file_roundtrip();
+    test_int4_tensor_file_roundtrip();
     test_minimal_gguf_inspection();
     test_cpu_matvec();
+    test_metal_matches_cpu_when_available();
     std::cout << "nanoquant_tests passed\n";
 }

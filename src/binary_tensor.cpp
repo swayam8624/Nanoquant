@@ -17,7 +17,9 @@ namespace nanoquant {
 namespace {
 
 constexpr std::array<char, 8> kMagic = {'N', 'Q', 'T', 'N', 'S', 'R', '0', '1'};
+constexpr std::array<char, 8> kInt4Magic = {'N', 'Q', 'I', 'N', 'T', '4', '0', '1'};
 constexpr std::uint64_t kHeaderBytes = 8 + 4 + 8 + 8;
+constexpr std::uint64_t kInt4HeaderBytes = 8 + 4 + 8 + 8 + 8 + 8 + 8;
 
 template <typename T>
 void write_scalar(std::ostream& out, T value) {
@@ -52,6 +54,30 @@ BinaryTensorInfo read_header(std::istream& in) {
     }
     if (info.rows == 0U || info.cols == 0U) {
         throw std::runtime_error("tensor shape must be non-zero");
+    }
+    return info;
+}
+
+Int4TensorFileInfo read_int4_header(std::istream& in) {
+    std::array<char, 8> magic{};
+    in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+    if (magic != kInt4Magic) {
+        throw std::runtime_error("not a NanoQuant int4 tensor");
+    }
+
+    Int4TensorFileInfo info;
+    info.version = read_scalar<std::uint32_t>(in);
+    info.rows = read_scalar<std::uint64_t>(in);
+    info.cols = read_scalar<std::uint64_t>(in);
+    info.group_size = read_scalar<std::uint64_t>(in);
+    info.scale_count = read_scalar<std::uint64_t>(in);
+    info.packed_bytes = read_scalar<std::uint64_t>(in);
+    info.data_offset = kInt4HeaderBytes;
+    if (info.version != 1U) {
+        throw std::runtime_error("unsupported NanoQuant int4 tensor version");
+    }
+    if (info.rows == 0U || info.cols == 0U || info.group_size == 0U) {
+        throw std::runtime_error("int4 tensor shape and group size must be non-zero");
     }
     return info;
 }
@@ -95,6 +121,63 @@ BinaryTensorInfo inspect_binary_tensor(const std::filesystem::path& path) {
     const auto file_bytes = std::filesystem::file_size(path);
     if (file_bytes < info.data_offset + info.data_bytes) {
         throw std::runtime_error("tensor data is truncated: " + path.string());
+    }
+    return info;
+}
+
+void save_int4_tensor(const std::filesystem::path& path, const Int4Tensor& tensor) {
+    std::filesystem::create_directories(path.parent_path().empty() ? "." : path.parent_path());
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("failed to open int4 tensor for writing: " + path.string());
+    }
+
+    out.write(kInt4Magic.data(), static_cast<std::streamsize>(kInt4Magic.size()));
+    write_scalar<std::uint32_t>(out, 1U);
+    write_scalar<std::uint64_t>(out, tensor.rows);
+    write_scalar<std::uint64_t>(out, tensor.cols);
+    write_scalar<std::uint64_t>(out, tensor.group_size);
+    write_scalar<std::uint64_t>(out, tensor.scales.size());
+    write_scalar<std::uint64_t>(out, tensor.packed_values.size());
+    out.write(reinterpret_cast<const char*>(tensor.scales.data()),
+              static_cast<std::streamsize>(tensor.scales.size() * sizeof(float)));
+    out.write(reinterpret_cast<const char*>(tensor.packed_values.data()),
+              static_cast<std::streamsize>(tensor.packed_values.size()));
+}
+
+Int4Tensor load_int4_tensor(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("failed to open int4 tensor: " + path.string());
+    }
+    const Int4TensorFileInfo info = read_int4_header(in);
+
+    Int4Tensor tensor;
+    tensor.rows = static_cast<std::size_t>(info.rows);
+    tensor.cols = static_cast<std::size_t>(info.cols);
+    tensor.group_size = static_cast<std::size_t>(info.group_size);
+    tensor.scales.resize(static_cast<std::size_t>(info.scale_count));
+    tensor.packed_values.resize(static_cast<std::size_t>(info.packed_bytes));
+    in.read(reinterpret_cast<char*>(tensor.scales.data()),
+            static_cast<std::streamsize>(tensor.scales.size() * sizeof(float)));
+    in.read(reinterpret_cast<char*>(tensor.packed_values.data()),
+            static_cast<std::streamsize>(tensor.packed_values.size()));
+    if (!in) {
+        throw std::runtime_error("int4 tensor data is truncated: " + path.string());
+    }
+    return tensor;
+}
+
+Int4TensorFileInfo inspect_int4_tensor(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("failed to open int4 tensor: " + path.string());
+    }
+    Int4TensorFileInfo info = read_int4_header(in);
+    const auto file_bytes = std::filesystem::file_size(path);
+    const std::uint64_t expected = info.data_offset + info.scale_count * sizeof(float) + info.packed_bytes;
+    if (file_bytes < expected) {
+        throw std::runtime_error("int4 tensor data is truncated: " + path.string());
     }
     return info;
 }

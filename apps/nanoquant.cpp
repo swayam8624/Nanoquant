@@ -6,15 +6,20 @@
 #include "nanoquant/workflow.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -38,6 +43,22 @@ struct GgufOptions {
     std::size_t preview_limit = 80;
     std::size_t metadata_limit = 24;
     std::size_t tensor_limit = 24;
+};
+
+struct BenchmarkOptions {
+    std::size_t rows = 512;
+    std::size_t cols = 512;
+    std::uint64_t seed = 42;
+    std::size_t group_size = 32;
+    std::size_t iterations = 10;
+    std::filesystem::path csv_path;
+};
+
+struct PromptEvalOptions {
+    std::string reference_model;
+    std::string compressed_model;
+    std::filesystem::path prompt_file;
+    std::filesystem::path output_path;
 };
 
 std::string next_value(int& index, int argc, char** argv, std::string_view flag) {
@@ -119,6 +140,54 @@ GgufOptions parse_gguf_options(int argc, char** argv, int start_index) {
     return options;
 }
 
+BenchmarkOptions parse_benchmark_options(int argc, char** argv, int start_index) {
+    BenchmarkOptions options;
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--rows") {
+            options.rows = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--cols") {
+            options.cols = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--seed") {
+            options.seed = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--group-size") {
+            options.group_size = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--iterations") {
+            options.iterations = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--csv") {
+            options.csv_path = next_value(index, argc, argv, arg);
+        } else {
+            throw std::invalid_argument("unknown benchmark option: " + std::string(arg));
+        }
+    }
+    if (options.rows == 0U || options.cols == 0U || options.iterations == 0U) {
+        throw std::invalid_argument("rows, cols, and iterations must be non-zero");
+    }
+    return options;
+}
+
+PromptEvalOptions parse_prompt_eval_options(int argc, char** argv, int start_index) {
+    PromptEvalOptions options;
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--reference") {
+            options.reference_model = next_value(index, argc, argv, arg);
+        } else if (arg == "--compressed") {
+            options.compressed_model = next_value(index, argc, argv, arg);
+        } else if (arg == "--prompt-file") {
+            options.prompt_file = next_value(index, argc, argv, arg);
+        } else if (arg == "--output") {
+            options.output_path = next_value(index, argc, argv, arg);
+        } else {
+            throw std::invalid_argument("unknown evaluate-prompts option: " + std::string(arg));
+        }
+    }
+    if (options.reference_model.empty() || options.compressed_model.empty() || options.prompt_file.empty()) {
+        throw std::invalid_argument("--reference, --compressed, and --prompt-file are required");
+    }
+    return options;
+}
+
 void print_help() {
     std::cout
         << "NanoQuant C++ demo CLI\n\n"
@@ -129,8 +198,13 @@ void print_help() {
         << "  nanoquant tensor-save --path PATH [--rows N] [--cols N] [--seed N]\n"
         << "  nanoquant tensor-inspect --path PATH\n"
         << "  nanoquant tensor-demo --path PATH [--group-size N]\n"
+        << "  nanoquant int4-save --path PATH [--rows N] [--cols N] [--seed N] [--group-size N]\n"
+        << "  nanoquant int4-inspect --path PATH\n"
+        << "  nanoquant int4-demo --path PATH\n"
         << "  nanoquant gguf-inspect --path MODEL.gguf [--metadata-limit N] [--tensor-limit N]\n"
         << "  nanoquant metal-info\n"
+        << "  nanoquant benchmark [--rows N] [--cols N] [--iterations N] [--csv PATH]\n"
+        << "  nanoquant evaluate-prompts --reference NAME --compressed NAME --prompt-file PATH [--output PATH]\n"
         << "  nanoquant prove-small-model [hf-pipeline options]\n"
         << "  nanoquant hf-pipeline --model-id ID --ollama-name NAME [options]\n\n"
         << "HF pipeline options:\n"
@@ -140,6 +214,7 @@ void print_help() {
         << "  --base-ollama-name NAME    Existing teacher/base model for output comparison\n"
         << "  --reference-ollama-name N  Create an f16 reference Ollama model from converted GGUF\n"
         << "  --prompt TEXT              Prompt used for smoke test and comparison\n"
+        << "  --prompt-file PATH         Prompt set used for model comparison\n"
         << "  --ollama-push              Run `ollama push NAME` after create\n"
         << "  --execute                  Run external tools; omitted means dry-run plan only\n\n"
         << "Examples:\n"
@@ -147,6 +222,8 @@ void print_help() {
         << "  nanoquant inspect --rows 4096 --cols 4096\n"
         << "  nanoquant tensor-save --path artifacts/demo.tensor --rows 8 --cols 8\n"
         << "  nanoquant tensor-demo --path artifacts/demo.tensor\n"
+        << "  nanoquant int4-save --path artifacts/demo.int4 --rows 8 --cols 8\n"
+        << "  nanoquant benchmark --rows 1024 --cols 1024 --iterations 20 --csv artifacts/bench.csv\n"
         << "  nanoquant gguf-inspect --path artifacts/model.gguf\n"
         << "  nanoquant prove-small-model --ollama-name smollm2-nq\n"
         << "  nanoquant hf-pipeline --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0 --ollama-name tinyllama-nq\n";
@@ -259,6 +336,47 @@ int run_tensor_demo(int argc, char** argv, int start_index) {
     return EXIT_SUCCESS;
 }
 
+int run_int4_save(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, true);
+    const nanoquant::Tensor tensor = nanoquant::make_deterministic_weights(options.rows, options.cols, options.seed);
+    const nanoquant::Int4Tensor quantized = nanoquant::quantize_int4_symmetric(tensor, options.group_size);
+    nanoquant::save_int4_tensor(options.path, quantized);
+    const nanoquant::CodecReport report = nanoquant::report_int4(tensor, options.group_size);
+    std::cout << "wrote int4 tensor: " << options.path << '\n'
+              << "shape: " << quantized.rows << "x" << quantized.cols << '\n'
+              << "group_size: " << quantized.group_size << '\n'
+              << "packed_bytes: " << quantized.packed_values.size() << '\n';
+    print_report(report);
+    return EXIT_SUCCESS;
+}
+
+int run_int4_inspect(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, false);
+    const nanoquant::Int4TensorFileInfo info = nanoquant::inspect_int4_tensor(options.path);
+    std::cout << "path: " << options.path << '\n'
+              << "version: " << info.version << '\n'
+              << "shape: " << info.rows << "x" << info.cols << '\n'
+              << "group_size: " << info.group_size << '\n'
+              << "scale_count: " << info.scale_count << '\n'
+              << "packed_bytes: " << info.packed_bytes << '\n'
+              << "data_offset: " << info.data_offset << '\n';
+    return EXIT_SUCCESS;
+}
+
+int run_int4_demo(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, false);
+    const nanoquant::Int4Tensor quantized = nanoquant::load_int4_tensor(options.path);
+    const nanoquant::Tensor restored = nanoquant::dequantize_int4_cpu(quantized);
+    std::vector<float> vector(restored.cols(), 0.25F);
+    const auto output = nanoquant::matvec_cpu(restored, vector);
+    std::cout << "loaded int4 tensor: " << options.path << '\n'
+              << "shape: " << quantized.rows << "x" << quantized.cols << '\n'
+              << "group_size: " << quantized.group_size << '\n'
+              << "dequantized_bytes: " << restored.bytes() << '\n'
+              << "matvec_first: " << (output.empty() ? 0.0F : output.front()) << '\n';
+    return EXIT_SUCCESS;
+}
+
 int run_gguf_inspect(int argc, char** argv, int start_index) {
     const GgufOptions options = parse_gguf_options(argc, argv, start_index);
     const nanoquant::GgufInfo info = nanoquant::inspect_gguf(options.path, options.preview_limit);
@@ -312,6 +430,112 @@ int run_metal_info() {
     return EXIT_SUCCESS;
 }
 
+void print_benchmark_graph(const std::vector<nanoquant::BenchmarkResult>& results) {
+    double max_ms = 0.0;
+    for (const auto& result : results) {
+        if (result.available) {
+            max_ms = std::max(max_ms, result.total_ms);
+        }
+    }
+    for (const auto& result : results) {
+        if (!result.available) {
+            std::cout << result.backend << " unavailable\n";
+            continue;
+        }
+        const int width = max_ms <= 0.0 ? 0 : static_cast<int>((result.total_ms / max_ms) * 40.0);
+        std::cout << std::setw(6) << result.backend << " | " << std::string(static_cast<std::size_t>(width), '#')
+                  << " " << std::fixed << std::setprecision(3) << result.total_ms << " ms\n";
+    }
+}
+
+int run_benchmark(int argc, char** argv, int start_index) {
+    const BenchmarkOptions options = parse_benchmark_options(argc, argv, start_index);
+    const nanoquant::Tensor tensor = nanoquant::make_deterministic_weights(options.rows, options.cols, options.seed);
+    const nanoquant::Int4Tensor quantized = nanoquant::quantize_int4_symmetric(tensor, options.group_size);
+    std::vector<float> vector(options.cols);
+    for (std::size_t index = 0; index < vector.size(); ++index) {
+        vector[index] = static_cast<float>(static_cast<int>(index % 17U) - 8) / 17.0F;
+    }
+    const auto results = nanoquant::benchmark_backends(quantized, vector, options.iterations);
+
+    std::cout << "benchmark shape=" << options.rows << "x" << options.cols
+              << " iterations=" << options.iterations << " group_size=" << options.group_size << "\n\n";
+    std::cout << "backend,dequant_ms,matvec_ms,total_ms,available\n";
+    for (const auto& result : results) {
+        std::cout << result.backend << ',' << std::fixed << std::setprecision(6)
+                  << result.dequant_ms << ',' << result.matvec_ms << ',' << result.total_ms << ','
+                  << (result.available ? "yes" : "no") << '\n';
+    }
+    std::cout << '\n';
+    print_benchmark_graph(results);
+
+    if (!options.csv_path.empty()) {
+        std::filesystem::create_directories(options.csv_path.parent_path().empty() ? "." : options.csv_path.parent_path());
+        std::ofstream csv(options.csv_path);
+        csv << "backend,dequant_ms,matvec_ms,total_ms,available\n";
+        for (const auto& result : results) {
+            csv << result.backend << ',' << result.dequant_ms << ',' << result.matvec_ms << ','
+                << result.total_ms << ',' << (result.available ? "yes" : "no") << '\n';
+        }
+        std::cout << "wrote csv: " << options.csv_path << '\n';
+    }
+    return EXIT_SUCCESS;
+}
+
+int run_evaluate_prompts(int argc, char** argv, int start_index) {
+    const PromptEvalOptions options = parse_prompt_eval_options(argc, argv, start_index);
+    const std::vector<std::string> prompts = nanoquant::load_prompt_file(options.prompt_file);
+    const auto evaluation =
+        nanoquant::evaluate_ollama_prompt_set(options.reference_model, options.compressed_model, prompts);
+
+    std::ostringstream report;
+    report << "# NanoQuant Prompt Evaluation\n\n";
+    report << "- reference: `" << options.reference_model << "`\n";
+    report << "- compressed: `" << options.compressed_model << "`\n";
+    report << "- prompts: `" << evaluation.rows.size() << "`\n";
+    report << "- mean lexical overlap: `" << evaluation.mean_lexical_overlap << "`\n";
+    report << "- mean length ratio: `" << evaluation.mean_length_ratio << "`\n";
+    report << "- degraded prompts: `" << evaluation.degraded_count << "`\n\n";
+    report << "## Overlap Graph\n\n```text\n";
+
+    std::cout << "prompts: " << evaluation.rows.size() << '\n'
+              << "mean_lexical_overlap: " << evaluation.mean_lexical_overlap << '\n'
+              << "mean_length_ratio: " << evaluation.mean_length_ratio << '\n'
+              << "degraded_prompts: " << evaluation.degraded_count << "\n\n";
+    for (std::size_t index = 0; index < evaluation.rows.size(); ++index) {
+        const auto& row = evaluation.rows[index];
+        const int bar = static_cast<int>(row.comparison.lexical_overlap * 40.0);
+        const std::string graph = std::string(static_cast<std::size_t>(std::clamp(bar, 0, 40)), '#');
+        std::cout << index + 1U << ". overlap=" << row.comparison.lexical_overlap
+                  << " length_ratio=" << row.comparison.length_ratio
+                  << " degraded=" << (row.comparison.likely_degraded ? "yes" : "no") << '\n'
+                  << "   graph:  " << graph << '\n'
+                  << "   prompt: " << row.prompt << '\n';
+        report << index + 1U << " | " << graph << " " << row.comparison.lexical_overlap
+               << (row.comparison.likely_degraded ? " degraded" : "") << "\n";
+    }
+    report << "```\n\n";
+
+    for (std::size_t index = 0; index < evaluation.rows.size(); ++index) {
+        const auto& row = evaluation.rows[index];
+        report << "## Prompt " << index + 1U << "\n\n";
+        report << "```text\n" << row.prompt << "\n```\n\n";
+        report << "- lexical overlap: `" << row.comparison.lexical_overlap << "`\n";
+        report << "- length ratio: `" << row.comparison.length_ratio << "`\n";
+        report << "- likely degraded: `" << (row.comparison.likely_degraded ? "yes" : "no") << "`\n\n";
+        report << "### Reference\n\n```text\n" << row.comparison.base_output << "\n```\n\n";
+        report << "### Compressed\n\n```text\n" << row.comparison.compressed_output << "\n```\n\n";
+    }
+
+    if (!options.output_path.empty()) {
+        std::filesystem::create_directories(options.output_path.parent_path().empty() ? "." : options.output_path.parent_path());
+        std::ofstream out(options.output_path);
+        out << report.str();
+        std::cout << "wrote report: " << options.output_path << '\n';
+    }
+    return EXIT_SUCCESS;
+}
+
 int run_hf_pipeline(int argc, char** argv, int start_index) {
     nanoquant::WorkflowOptions options;
     for (int index = start_index; index < argc; ++index) {
@@ -330,6 +554,8 @@ int run_hf_pipeline(int argc, char** argv, int start_index) {
             options.quantization = next_value(index, argc, argv, arg);
         } else if (arg == "--prompt") {
             options.prompt = next_value(index, argc, argv, arg);
+        } else if (arg == "--prompt-file") {
+            options.prompt_file = next_value(index, argc, argv, arg);
         } else if (arg == "--llama-cpp") {
             options.llama_cpp_dir = next_value(index, argc, argv, arg);
         } else if (arg == "--ollama-push") {
@@ -369,6 +595,8 @@ int run_prove_small_model(int argc, char** argv, int start_index) {
             options.quantization = next_value(index, argc, argv, arg);
         } else if (arg == "--prompt") {
             options.prompt = next_value(index, argc, argv, arg);
+        } else if (arg == "--prompt-file") {
+            options.prompt_file = next_value(index, argc, argv, arg);
         } else if (arg == "--llama-cpp") {
             options.llama_cpp_dir = next_value(index, argc, argv, arg);
         } else if (arg == "--ollama-push") {
@@ -410,11 +638,26 @@ int main(int argc, char** argv) {
         if (command == "tensor-demo") {
             return run_tensor_demo(argc, argv, 2);
         }
+        if (command == "int4-save") {
+            return run_int4_save(argc, argv, 2);
+        }
+        if (command == "int4-inspect") {
+            return run_int4_inspect(argc, argv, 2);
+        }
+        if (command == "int4-demo") {
+            return run_int4_demo(argc, argv, 2);
+        }
         if (command == "gguf-inspect") {
             return run_gguf_inspect(argc, argv, 2);
         }
         if (command == "metal-info") {
             return run_metal_info();
+        }
+        if (command == "benchmark") {
+            return run_benchmark(argc, argv, 2);
+        }
+        if (command == "evaluate-prompts") {
+            return run_evaluate_prompts(argc, argv, 2);
         }
         if (command == "prove-small-model") {
             return run_prove_small_model(argc, argv, 2);

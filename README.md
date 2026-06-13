@@ -57,6 +57,15 @@ Check whether the optional Metal backend is compiled and visible:
 ./build/nanoquant metal-info
 ```
 
+Serialize an int4 tensor and benchmark CPU vs Metal execution:
+
+```bash
+./build/nanoquant int4-save --path artifacts/demo.int4 --rows 256 --cols 256 --group-size 32
+./build/nanoquant int4-inspect --path artifacts/demo.int4
+./build/nanoquant int4-demo --path artifacts/demo.int4
+./build/nanoquant benchmark --rows 1024 --cols 1024 --iterations 20 --csv artifacts/bench.csv
+```
+
 List public compression modes:
 
 ```bash
@@ -80,6 +89,16 @@ Use the small-model proof preset for a lighter first demo:
 ```
 
 That is also a dry run by default. Add `--execute` only when `llama.cpp`, `ollama`, and the Hugging Face download toolchain are installed.
+
+Compare a reference and compressed Ollama model with a prompt set:
+
+```bash
+./build/nanoquant evaluate-prompts \
+  --reference smollm2-reference \
+  --compressed smollm2-nq \
+  --prompt-file examples/prompts.txt \
+  --output artifacts/prompt-eval.md
+```
 
 The command above is a dry run. Add `--execute` only after the plan points at working external tools:
 
@@ -158,15 +177,16 @@ See [docs/HF_OLLAMA_WORKFLOW.md](docs/HF_OLLAMA_WORKFLOW.md) for the end-to-end 
 
 - Done: file-backed tensor loading for simple binary matrices.
 - Done: GGUF metadata inspection without depending on a full runtime.
-- Done: optional Metal kernel source/discovery for dequantization and matvec, with CPU fallback.
+- Done: optional Metal kernel execution for dequantization and matvec, with CPU fallback.
 - Done: converter path that can prove compression on a small open model through `prove-small-model`.
 - Done: stable C ABI first; Python access is a thin ctypes layer over that ABI.
+- Done: prompt-set evaluator for comparing reference and compressed Ollama outputs.
 
 Next useful work:
 
-- Add serialized int4 tensor files, not just fp32 demo tensors.
-- Add measured benchmarks for CPU vs Metal once the Metal dispatch path executes kernels.
-- Add a prompt-set based evaluator instead of a single lexical smoke test.
+- Add packed int4 mmap loading, not just serialized readback.
+- Add Metal buffer reuse for cleaner benchmark numbers on repeated runs.
+- Add semantic/embedding-based evaluation next to lexical overlap.
 
 ## License
 
