@@ -1,3 +1,6 @@
+#include "nanoquant/backend.hpp"
+#include "nanoquant/binary_tensor.hpp"
+#include "nanoquant/gguf.hpp"
 #include "nanoquant/quantization.hpp"
 #include "nanoquant/tensor.hpp"
 #include "nanoquant/workflow.hpp"
@@ -6,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
@@ -19,6 +23,21 @@ struct DemoOptions {
     std::size_t cols = 512;
     std::uint64_t seed = 42;
     std::size_t group_size = 32;
+};
+
+struct TensorFileOptions {
+    std::filesystem::path path;
+    std::size_t rows = 16;
+    std::size_t cols = 16;
+    std::uint64_t seed = 42;
+    std::size_t group_size = 32;
+};
+
+struct GgufOptions {
+    std::filesystem::path path;
+    std::size_t preview_limit = 80;
+    std::size_t metadata_limit = 24;
+    std::size_t tensor_limit = 24;
 };
 
 std::string next_value(int& index, int argc, char** argv, std::string_view flag) {
@@ -51,6 +70,55 @@ DemoOptions parse_demo_options(int argc, char** argv, int start_index) {
     return options;
 }
 
+TensorFileOptions parse_tensor_file_options(int argc, char** argv, int start_index, bool require_shape) {
+    TensorFileOptions options;
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--path") {
+            options.path = next_value(index, argc, argv, arg);
+        } else if (arg == "--rows") {
+            options.rows = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--cols") {
+            options.cols = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--seed") {
+            options.seed = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--group-size") {
+            options.group_size = std::stoull(next_value(index, argc, argv, arg));
+        } else {
+            throw std::invalid_argument("unknown tensor option: " + std::string(arg));
+        }
+    }
+    if (options.path.empty()) {
+        throw std::invalid_argument("--path is required");
+    }
+    if (require_shape && (options.rows == 0U || options.cols == 0U)) {
+        throw std::invalid_argument("rows and cols must be non-zero");
+    }
+    return options;
+}
+
+GgufOptions parse_gguf_options(int argc, char** argv, int start_index) {
+    GgufOptions options;
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--path") {
+            options.path = next_value(index, argc, argv, arg);
+        } else if (arg == "--preview-limit") {
+            options.preview_limit = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--metadata-limit") {
+            options.metadata_limit = std::stoull(next_value(index, argc, argv, arg));
+        } else if (arg == "--tensor-limit") {
+            options.tensor_limit = std::stoull(next_value(index, argc, argv, arg));
+        } else {
+            throw std::invalid_argument("unknown GGUF option: " + std::string(arg));
+        }
+    }
+    if (options.path.empty()) {
+        throw std::invalid_argument("--path is required");
+    }
+    return options;
+}
+
 void print_help() {
     std::cout
         << "NanoQuant C++ demo CLI\n\n"
@@ -58,6 +126,12 @@ void print_help() {
         << "  nanoquant demo [--rows N] [--cols N] [--seed N] [--group-size N]\n"
         << "  nanoquant levels\n"
         << "  nanoquant inspect [--rows N] [--cols N]\n"
+        << "  nanoquant tensor-save --path PATH [--rows N] [--cols N] [--seed N]\n"
+        << "  nanoquant tensor-inspect --path PATH\n"
+        << "  nanoquant tensor-demo --path PATH [--group-size N]\n"
+        << "  nanoquant gguf-inspect --path MODEL.gguf [--metadata-limit N] [--tensor-limit N]\n"
+        << "  nanoquant metal-info\n"
+        << "  nanoquant prove-small-model [hf-pipeline options]\n"
         << "  nanoquant hf-pipeline --model-id ID --ollama-name NAME [options]\n\n"
         << "HF pipeline options:\n"
         << "  --output-dir PATH          Artifact directory, default artifacts/nanoquant-model\n"
@@ -71,6 +145,10 @@ void print_help() {
         << "Examples:\n"
         << "  nanoquant demo --rows 1024 --cols 1024\n"
         << "  nanoquant inspect --rows 4096 --cols 4096\n"
+        << "  nanoquant tensor-save --path artifacts/demo.tensor --rows 8 --cols 8\n"
+        << "  nanoquant tensor-demo --path artifacts/demo.tensor\n"
+        << "  nanoquant gguf-inspect --path artifacts/model.gguf\n"
+        << "  nanoquant prove-small-model --ollama-name smollm2-nq\n"
         << "  nanoquant hf-pipeline --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0 --ollama-name tinyllama-nq\n";
 }
 
@@ -149,6 +227,91 @@ int run_inspect(int argc, char** argv, int start_index) {
     return EXIT_SUCCESS;
 }
 
+int run_tensor_save(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, true);
+    const nanoquant::Tensor tensor = nanoquant::make_deterministic_weights(options.rows, options.cols, options.seed);
+    nanoquant::save_binary_tensor(options.path, tensor);
+    std::cout << "wrote tensor: " << options.path << '\n'
+              << "shape: " << tensor.rows() << "x" << tensor.cols() << '\n'
+              << "data_bytes: " << tensor.bytes() << '\n';
+    return EXIT_SUCCESS;
+}
+
+int run_tensor_inspect(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, false);
+    const nanoquant::BinaryTensorInfo info = nanoquant::inspect_binary_tensor(options.path);
+    std::cout << "path: " << options.path << '\n'
+              << "version: " << info.version << '\n'
+              << "shape: " << info.rows << "x" << info.cols << '\n'
+              << "data_offset: " << info.data_offset << '\n'
+              << "data_bytes: " << info.data_bytes << '\n';
+    return EXIT_SUCCESS;
+}
+
+int run_tensor_demo(int argc, char** argv, int start_index) {
+    const TensorFileOptions options = parse_tensor_file_options(argc, argv, start_index, false);
+    const nanoquant::MappedTensor mapped(options.path);
+    const nanoquant::Tensor tensor = mapped.materialize();
+    std::cout << "mapped tensor: " << options.path << '\n'
+              << "shape: " << mapped.rows() << "x" << mapped.cols() << '\n'
+              << "mapped_values: " << mapped.elements() << "\n\n";
+    print_report(nanoquant::report_int4(tensor, options.group_size));
+    return EXIT_SUCCESS;
+}
+
+int run_gguf_inspect(int argc, char** argv, int start_index) {
+    const GgufOptions options = parse_gguf_options(argc, argv, start_index);
+    const nanoquant::GgufInfo info = nanoquant::inspect_gguf(options.path, options.preview_limit);
+
+    std::cout << "path: " << options.path << '\n'
+              << "version: " << info.version << '\n'
+              << "metadata_count: " << info.metadata_count << '\n'
+              << "tensor_count: " << info.tensor_count << "\n\n";
+
+    const std::size_t metadata_count = std::min(options.metadata_limit, info.metadata.size());
+    std::cout << "metadata preview:\n";
+    for (std::size_t index = 0; index < metadata_count; ++index) {
+        const auto& entry = info.metadata[index];
+        std::cout << "  " << entry.key << " (" << entry.type << "): " << entry.value_preview << '\n';
+    }
+    if (info.metadata.size() > metadata_count) {
+        std::cout << "  ... " << (info.metadata.size() - metadata_count) << " more\n";
+    }
+
+    const std::size_t tensor_count = std::min(options.tensor_limit, info.tensors.size());
+    std::cout << "\ntensor preview:\n";
+    for (std::size_t index = 0; index < tensor_count; ++index) {
+        const auto& tensor = info.tensors[index];
+        std::cout << "  " << tensor.name << " [";
+        for (std::size_t dim = 0; dim < tensor.dimensions.size(); ++dim) {
+            if (dim > 0U) {
+                std::cout << "x";
+            }
+            std::cout << tensor.dimensions[dim];
+        }
+        std::cout << "] " << nanoquant::gguf_type_name(tensor.type) << " offset=" << tensor.offset << '\n';
+    }
+    if (info.tensors.size() > tensor_count) {
+        std::cout << "  ... " << (info.tensors.size() - tensor_count) << " more\n";
+    }
+    return EXIT_SUCCESS;
+}
+
+int run_metal_info() {
+    const auto cpu = nanoquant::cpu_backend_info();
+    const auto metal = nanoquant::metal_backend_info();
+    std::cout << "cpu: available=" << (cpu.available ? "yes" : "no")
+              << " accelerated=" << (cpu.accelerated ? "yes" : "no") << '\n'
+              << "metal: available=" << (metal.available ? "yes" : "no")
+              << " accelerated=" << (metal.accelerated ? "yes" : "no")
+              << " name=\"" << metal.name << "\"\n";
+    const std::string kernels = nanoquant::metal_kernel_source();
+    if (!kernels.empty()) {
+        std::cout << "metal kernels: dequant_int4_to_f32, matvec_f32\n";
+    }
+    return EXIT_SUCCESS;
+}
+
 int run_hf_pipeline(int argc, char** argv, int start_index) {
     nanoquant::WorkflowOptions options;
     for (int index = start_index; index < argc; ++index) {
@@ -180,6 +343,45 @@ int run_hf_pipeline(int argc, char** argv, int start_index) {
     return nanoquant::run_workflow(options);
 }
 
+int run_prove_small_model(int argc, char** argv, int start_index) {
+    nanoquant::WorkflowOptions options;
+    options.model_id = "HuggingFaceTB/SmolLM2-135M-Instruct";
+    options.ollama_name = "smollm2-nanoquant";
+    options.reference_ollama_name = "smollm2-reference";
+    options.output_dir = "artifacts/smollm2-proof";
+    options.quantization = "Q4_K_M";
+    options.prompt = "Explain model quantization in one concise sentence.";
+
+    for (int index = start_index; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--model-id") {
+            options.model_id = next_value(index, argc, argv, arg);
+        } else if (arg == "--output-dir") {
+            options.output_dir = next_value(index, argc, argv, arg);
+        } else if (arg == "--ollama-name") {
+            options.ollama_name = next_value(index, argc, argv, arg);
+        } else if (arg == "--base-ollama-name") {
+            options.base_ollama_name = next_value(index, argc, argv, arg);
+            options.reference_ollama_name.clear();
+        } else if (arg == "--reference-ollama-name") {
+            options.reference_ollama_name = next_value(index, argc, argv, arg);
+        } else if (arg == "--quant") {
+            options.quantization = next_value(index, argc, argv, arg);
+        } else if (arg == "--prompt") {
+            options.prompt = next_value(index, argc, argv, arg);
+        } else if (arg == "--llama-cpp") {
+            options.llama_cpp_dir = next_value(index, argc, argv, arg);
+        } else if (arg == "--ollama-push") {
+            options.ollama_push = true;
+        } else if (arg == "--execute") {
+            options.execute = true;
+        } else {
+            throw std::invalid_argument("unknown prove-small-model option: " + std::string(arg));
+        }
+    }
+    return nanoquant::run_workflow(options);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -198,6 +400,24 @@ int main(int argc, char** argv) {
         }
         if (command == "inspect") {
             return run_inspect(argc, argv, 2);
+        }
+        if (command == "tensor-save") {
+            return run_tensor_save(argc, argv, 2);
+        }
+        if (command == "tensor-inspect") {
+            return run_tensor_inspect(argc, argv, 2);
+        }
+        if (command == "tensor-demo") {
+            return run_tensor_demo(argc, argv, 2);
+        }
+        if (command == "gguf-inspect") {
+            return run_gguf_inspect(argc, argv, 2);
+        }
+        if (command == "metal-info") {
+            return run_metal_info();
+        }
+        if (command == "prove-small-model") {
+            return run_prove_small_model(argc, argv, 2);
         }
         if (command == "hf-pipeline") {
             return run_hf_pipeline(argc, argv, 2);

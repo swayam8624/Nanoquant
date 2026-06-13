@@ -8,6 +8,9 @@ The current build demonstrates the core primitives that matter for a real compre
 - row-wise one-bit centroid quantization
 - bit/nibble packing
 - 2:4 structured sparsity analysis
+- file-backed fp32 tensor loading with mmap
+- GGUF metadata and tensor-directory inspection without a model runtime
+- portable CPU matvec/dequantization fallback plus optional Metal kernel source/discovery
 - deterministic demo tensors for reproducible output
 
 This is not claiming to be a finished LLM runtime yet. It is a clean C++ foundation that can grow toward GGUF/llama.cpp-style integration, Metal kernels, and real checkpoint conversion.
@@ -34,6 +37,26 @@ Inspect memory estimates:
 ./build/nanoquant inspect --rows 4096 --cols 4096
 ```
 
+Create and inspect a file-backed tensor:
+
+```bash
+./build/nanoquant tensor-save --path artifacts/demo.tensor --rows 8 --cols 8 --seed 7
+./build/nanoquant tensor-inspect --path artifacts/demo.tensor
+./build/nanoquant tensor-demo --path artifacts/demo.tensor
+```
+
+Inspect a GGUF header without loading model weights:
+
+```bash
+./build/nanoquant gguf-inspect --path path/to/model.gguf --metadata-limit 20 --tensor-limit 20
+```
+
+Check whether the optional Metal backend is compiled and visible:
+
+```bash
+./build/nanoquant metal-info
+```
+
 List public compression modes:
 
 ```bash
@@ -49,6 +72,14 @@ Plan a Hugging Face to Ollama compression run:
   --reference-ollama-name tinyllama-reference \
   --prompt "Explain quantization in one sentence."
 ```
+
+Use the small-model proof preset for a lighter first demo:
+
+```bash
+./build/nanoquant prove-small-model --ollama-name smollm2-nq
+```
+
+That is also a dry run by default. Add `--execute` only when `llama.cpp`, `ollama`, and the Hugging Face download toolchain are installed.
 
 The command above is a dry run. Add `--execute` only after the plan points at working external tools:
 
@@ -98,6 +129,8 @@ Python is still useful for research scripts and bindings, but the compression co
 - Metal, Accelerate, and mmap/GGUF integration fit naturally
 - the demo avoids installing PyTorch just to prove byte-level compression works
 
+Python is exposed only through the stable C ABI in `include/nanoquant/c_api.h`. The small `bindings/python/nanoquant_ctypes.py` helper is intentionally thin and does not bind C++ internals.
+
 ## Apple Silicon Notes
 
 The target development machine has 32 GB unified memory and a Metal-capable GPU. NanoQuant therefore avoids CUDA barriers in the public core:
@@ -123,11 +156,17 @@ See [docs/HF_OLLAMA_WORKFLOW.md](docs/HF_OLLAMA_WORKFLOW.md) for the end-to-end 
 
 ## Roadmap
 
-- Add file-backed tensor loading for simple binary matrices.
-- Add GGUF metadata inspection without depending on a full runtime.
-- Add optional Metal kernels for dequantization and matvec.
-- Add a converter path that can prove compression on a small open model.
-- Add Python bindings only after the C++ ABI is stable enough to be worth binding.
+- Done: file-backed tensor loading for simple binary matrices.
+- Done: GGUF metadata inspection without depending on a full runtime.
+- Done: optional Metal kernel source/discovery for dequantization and matvec, with CPU fallback.
+- Done: converter path that can prove compression on a small open model through `prove-small-model`.
+- Done: stable C ABI first; Python access is a thin ctypes layer over that ABI.
+
+Next useful work:
+
+- Add serialized int4 tensor files, not just fp32 demo tensors.
+- Add measured benchmarks for CPU vs Metal once the Metal dispatch path executes kernels.
+- Add a prompt-set based evaluator instead of a single lexical smoke test.
 
 ## License
 

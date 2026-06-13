@@ -20,6 +20,16 @@ The command is intentionally a coordinator. It does not pretend that arbitrary H
 
 Dry run prints every command and writes no model weights. Use it before every real run.
 
+## Small-Model Proof Preset
+
+For a first public demo, use the preset command:
+
+```bash
+./build/nanoquant prove-small-model --ollama-name smollm2-nq
+```
+
+The preset chooses `HuggingFaceTB/SmolLM2-135M-Instruct`, `Q4_K_M`, a generated f16 reference model, and a local artifact directory under `artifacts/smollm2-proof`. It is still a dry run unless `--execute` is present.
+
 ## Execute
 
 Set `LLAMA_CPP_DIR` or pass `--llama-cpp`:
